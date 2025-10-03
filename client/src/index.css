@@ -2163,3 +2163,18 @@ html {
     opacity: .5;
   }
 }
+
+
+/* Nishant */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.diagram-container {
+  border: 1px solid #ddd;
+  padding: 12px;
+  min-height: 120px;
+  background: #fff;
+}
