@@ -1,18 +1,64 @@
-import env from "../config/index.js"
 import User from "../models/user.model.js";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 
 const registerUser = async (req, reply) => {
     try {
-        const { username, email, password } = req.body;
+        const { firstName, lastName, email, password, phoneNumber, role } = req.body;
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return reply.code(400).send({
+                success: false,
+                message: "User with this email already exists"
+            });
+        }
 
-        const newUser = await User.create({ username, email, password: hashedPassword });
+        const newUser = await User.create({
+            firstName,
+            lastName,
+            email,
+            password,
+            phoneNumber,
+            role: role || "normal"
+        });
 
-        reply.code(201).send({ success: true, user: newUser });
+        const userResponse = {
+            _id: newUser._id,
+            firstName: newUser.firstName,
+            lastName: newUser.lastName,
+            email: newUser.email,
+            role: newUser.role,
+            phoneNumber: newUser.phoneNumber,
+            googleId: newUser.googleId,
+            createdAt: newUser.createdAt,
+            updatedAt: newUser.updatedAt
+        };
+
+        // Generate tokens
+        const accessToken = newUser.generateAccessToken();
+        const refreshToken = newUser.generateRefreshToken();
+
+        // Set cookie using Fastify's setCookie method
+        reply.setCookie('refreshToken', refreshToken, {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
+        });
+
+        reply.code(201).send({
+            success: true,
+            message: "User registered successfully",
+            user: userResponse,
+            accessToken
+        });
     } catch (error) {
+        if (error.code === 11000) {
+            return reply.code(400).send({
+                success: false,
+                message: "User with this email already exists"
+            });
+        }
         reply.code(500).send({ success: false, message: error.message });
     }
 };
@@ -22,14 +68,74 @@ const loginUser = async (req, reply) => {
         const { email, password } = req.body;
 
         const user = await User.findOne({ email });
-        if (!user) return reply.code(404).send({ message: "User not found" });
+        if (!user) {
+            return reply.code(401).send({
+                success: false,
+                message: "Invalid email or password"
+            });
+        }
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return reply.code(401).send({ message: "Invalid credentials" });
+        if (!user.password) {
+            return reply.code(401).send({
+                success: false,
+                message: "This email is associated with Google login. Please use Google Sign-In."
+            });
+        }
 
-        const token = jwt.sign({ id: user._id }, env.JWT_SECRET, { expiresIn: "1d" });
+        const isMatch = await user.isPasswordCorrect(password);
+        if (!isMatch) {
+            return reply.code(401).send({
+                success: false,
+                message: "Invalid email or password"
+            });
+        }
 
-        reply.send({ success: true, token });
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        const userResponse = {
+            _id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            role: user.role,
+            phoneNumber: user.phoneNumber
+        };
+
+        // Set cookie using Fastify's setCookie
+        reply.setCookie('refreshToken', refreshToken, {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
+        });
+
+        reply.send({
+            success: true,
+            message: "Login successful",
+            user: userResponse,
+            accessToken
+        });
+    } catch (error) {
+        reply.code(500).send({ success: false, message: error.message });
+    }
+};
+
+const logoutUser = async (req, reply) => {
+    try {
+        // Clear the refreshToken cookie
+        reply.clearCookie('refreshToken', {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        reply.send({
+            success: true,
+            message: "Logged out successfully"
+        });
     } catch (error) {
         reply.code(500).send({ success: false, message: error.message });
     }
@@ -37,5 +143,6 @@ const loginUser = async (req, reply) => {
 
 export default {
     loginUser,
-    registerUser
+    registerUser,
+    logoutUser
 };

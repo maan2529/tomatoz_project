@@ -13,11 +13,22 @@
   "license": "ISC",
   "packageManager": "pnpm@10.15.1",
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/community": "^0.3.57",
+    "@langchain/core": "^0.3.78",
+    "@langchain/google-genai": "^0.2.18",
+    "@langchain/langgraph": "^0.4.9",
+    "@tavily/core": "^0.5.12",
     "bcryptjs": "^3.0.2",
+    "cheerio": "^1.1.2",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.18.3"
+    "langchain": "^0.3.35",
+    "mongoose": "^8.18.3",
+    "playwright": "^1.55.1",
+    "turndown": "^7.2.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

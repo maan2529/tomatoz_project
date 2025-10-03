@@ -1,16 +1,17 @@
 import env from "./config/index.js"
 import Fastify from "fastify";
+import cookie from "@fastify/cookie";
 import app from "./app/index.js";
 
+const fastify = Fastify();
 
-const fastify = Fastify({
-  logger: true, // good for production debugging
+fastify.register(cookie, {
+  secret: "nice_pic",
+  parseOptions: {}
 });
 
-// register main app logic
 app(fastify);
 
-// start server
 const startServer = async () => {
   try {
     await fastify.listen({ port: env.PORT, host: "0.0.0.0" });
