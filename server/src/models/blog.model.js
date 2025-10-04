@@ -8,13 +8,13 @@ const blogSchema = new mongoose.Schema({
   title: { type: String, required: true },
   slug: { type: String, required: true, unique: true },
   markdown: { type: String, required: true },
-  summary: { type: String, required: true },
-  highlights: [{ type: String }],
-  tags: [{ type: String }],
+  summary: { type: String, default: "" },
+  highlights: [{ type: String, default: [] }],
+  tags: [{ type: String, default: [] }],
   language: { type: String, default: "en" },
-  audioIds: [{ type: mongoose.Schema.Types.ObjectId }],
-  imageIds: [{ type: mongoose.Schema.Types.ObjectId }],
-  diagramIds: [{ type: mongoose.Schema.Types.ObjectId }],
+  audioIds: [{ type: mongoose.Schema.Types.ObjectId, default: [] }],
+  imageIds: [{ type: mongoose.Schema.Types.ObjectId, default: [] }],
+  diagramIds: [{ type: mongoose.Schema.Types.ObjectId, default: [] }],
   processingStatus: {
     type: String,
     enum: ["processing", "ready", "failed"],
@@ -36,6 +36,7 @@ blogSchema.pre("save", function (next) {
   next();
 });
 
+// Generate a slug from title or fallback random
 blogSchema.statics.generateSlug = function (title) {
   if (!title || title.trim().length === 0) {
     return `update-${crypto.randomBytes(3).toString('hex')}`;
@@ -49,6 +50,7 @@ blogSchema.statics.generateSlug = function (title) {
     .replace(/-+$/, "");
 };
 
+// Ensure slug uniqueness in DB
 blogSchema.statics.handleSlugCollision = async function (slug) {
   let newSlug = slug;
   let attempts = 0;
