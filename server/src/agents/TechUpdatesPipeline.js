@@ -8,6 +8,7 @@ import { chromium } from "playwright";
 import TurndownService from "turndown";
 import { START, END, StateGraph, Annotation } from "@langchain/langgraph";
 import { HumanMessage } from "@langchain/core/messages";
+import crypto from 'crypto';
 
 export class TechUpdatesPipeline {
   constructor(config = {}) {
@@ -24,8 +25,63 @@ export class TechUpdatesPipeline {
       codeBlockStyle: "fenced",
     });
 
-    // Configure turndown for better markdown conversion
     this.turndownService.remove(['script', 'style', 'noscript', 'iframe']);
+  }
+
+  generateContentHash(content) {
+    return crypto
+      .createHash('sha256')
+      .update(content.trim())
+      .digest('hex')
+      .substring(0, 16);
+  }
+
+  async checkExistingContent(url, contentHash) {
+    try {
+      const existingByUrl = await Blog.findOne({ originalUrl: url });
+
+      if (existingByUrl) {
+        console.log(`📌 Found existing blog for URL: ${url}`);
+
+        const existingHash = this.generateContentHash(existingByUrl.markdown || '');
+
+        if (existingHash === contentHash) {
+          console.log(`✓ Content unchanged - skipping`);
+          return { exists: true, changed: false, blog: existingByUrl };
+        } else {
+          console.log(`🔄 Content changed - will update`);
+          return { exists: true, changed: true, blog: existingByUrl };
+        }
+      }
+
+      return { exists: false, changed: false, blog: null };
+    } catch (err) {
+      console.error(`❌ Error checking existing content: ${err.message}`);
+      return { exists: false, changed: false, blog: null };
+    }
+  }
+
+  async updateExistingBlog(existingBlog, newContent) {
+    console.log(`🔄 Updating blog: ${existingBlog.title}`);
+
+    try {
+      // Update all fields
+      existingBlog.title = newContent.title || existingBlog.title;
+      existingBlog.markdown = newContent.markdown;
+      existingBlog.summary = newContent.summary;
+      existingBlog.highlights = newContent.highlights;
+      existingBlog.tags = newContent.tags;
+      existingBlog.readingTimeMinutes = newContent.readingTimeMinutes;
+      existingBlog.contentHash = newContent.contentHash; // IMPORTANT: Update hash
+      existingBlog.updated_at = new Date();
+
+      await existingBlog.save();
+      console.log(`✅ Blog updated successfully`);
+      return existingBlog;
+    } catch (err) {
+      console.error(`❌ Failed to update blog: ${err.message}`);
+      throw err;
+    }
   }
 
   async searchTechUpdates(tech) {
@@ -42,9 +98,8 @@ export class TechUpdatesPipeline {
 
       console.log(`📄 Tavily returned ${searchResults.results?.length || 0} results`);
 
-      // Validate and map results with better error handling
       const mappedResults = (searchResults.results || [])
-        .filter(r => r && r.url) // Filter out invalid results
+        .filter(r => r && r.url)
         .map((r) => ({
           title: r.title || "Untitled",
           url: r.url,
@@ -70,7 +125,6 @@ export class TechUpdatesPipeline {
     const seen = new Set();
     const prioritized = [];
 
-    // First pass: Add official sources
     for (const r of results) {
       if (!seen.has(r.url) && isOfficialSource(r.url, tech)) {
         prioritized.push(r);
@@ -78,7 +132,6 @@ export class TechUpdatesPipeline {
       }
     }
 
-    // Second pass: Add remaining sources
     for (const r of results) {
       if (!seen.has(r.url) && prioritized.length < this.config.maxSources * 2) {
         prioritized.push(r);
@@ -92,10 +145,10 @@ export class TechUpdatesPipeline {
   async extractContent(searchResults) {
     console.log(`\n🧠 Extracting content from ${searchResults.length} sources...`);
     const extracted = [];
+    const skipped = [];
     const errors = [];
 
-    // Process articles in parallel with concurrency limit
-    const concurrencyLimit = 2; // Reduced to 2 for stability
+    const concurrencyLimit = 2;
     for (let i = 0; i < searchResults.length; i += concurrencyLimit) {
       const batch = searchResults.slice(i, i + concurrencyLimit);
       console.log(`\n📦 Processing batch ${Math.floor(i / concurrencyLimit) + 1}/${Math.ceil(searchResults.length / concurrencyLimit)}`);
@@ -104,28 +157,53 @@ export class TechUpdatesPipeline {
         batch.map(result => this.extractSingleArticle(result))
       );
 
-      results.forEach((result, index) => {
+      for (let index = 0; index < results.length; index++) {
+        const result = results[index];
+        const searchResult = batch[index];
+
         if (result.status === 'fulfilled' && result.value) {
-          console.log(`✅ Success: ${batch[index].url}`);
-          extracted.push(result.value);
+          const article = result.value;
+
+          const contentHash = this.generateContentHash(article.markdown);
+          article.contentHash = contentHash;
+
+          const existingCheck = await this.checkExistingContent(
+            searchResult.url,
+            contentHash
+          );
+
+          if (existingCheck.exists && !existingCheck.changed) {
+            console.log(`⏭️  Skipped (duplicate): ${searchResult.url}`);
+            skipped.push({
+              url: searchResult.url,
+              reason: 'Content unchanged'
+            });
+            continue;
+          }
+
+          if (existingCheck.exists && existingCheck.changed) {
+            article.isUpdate = true;
+            article.existingBlog = existingCheck.blog;
+            console.log(`🔄 Marked for update: ${searchResult.url}`);
+          }
+
+          console.log(`✅ Success: ${searchResult.url}`);
+          extracted.push(article);
+
         } else {
-          const url = batch[index].url;
+          const url = searchResult.url;
           const error = result.reason?.message || result.value?.error || 'Unknown error';
           console.error(`❌ Failed: ${url}`);
           console.error(`   Reason: ${error}`);
           errors.push({ url, error });
         }
-      });
+      }
     }
 
     console.log(`\n📊 Extraction Summary:`);
-    console.log(`   ✅ Success: ${extracted.length}/${searchResults.length}`);
+    console.log(`   ✅ New/Updated: ${extracted.length}/${searchResults.length}`);
+    console.log(`   ⏭️  Skipped (duplicates): ${skipped.length}/${searchResults.length}`);
     console.log(`   ❌ Failed: ${errors.length}/${searchResults.length}`);
-
-    if (errors.length > 0 && extracted.length === 0) {
-      console.error(`\n⚠️  All extractions failed. Common errors:`);
-      errors.slice(0, 3).forEach(e => console.error(`   - ${e.error}`));
-    }
 
     return extracted;
   }
@@ -134,7 +212,6 @@ export class TechUpdatesPipeline {
     let browser;
     let retries = 2;
 
-    // Skip problematic URLs
     const skipDomains = ['x.com', 'twitter.com', 'facebook.com', 'instagram.com'];
     const urlDomain = new URL(result.url).hostname;
     if (skipDomains.some(domain => urlDomain.includes(domain))) {
@@ -155,7 +232,6 @@ export class TechUpdatesPipeline {
           ]
         });
 
-        // Create context with user agent and proper settings
         const context = await browser.newContext({
           userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           viewport: { width: 1920, height: 1080 },
@@ -165,7 +241,6 @@ export class TechUpdatesPipeline {
 
         console.log(`🔗 Navigating to ${result.url}...`);
 
-        // Try navigation with fallback strategies
         try {
           await page.goto(result.url, {
             waitUntil: "domcontentloaded",
@@ -179,12 +254,10 @@ export class TechUpdatesPipeline {
           });
         }
 
-        // Wait for content to load
         await page.waitForTimeout(3000);
 
         console.log("📄 Extracting content...");
         const extracted = await page.evaluate(() => {
-          // Try multiple selectors for main content
           const selectors = [
             'main article',
             'main',
@@ -202,17 +275,14 @@ export class TechUpdatesPipeline {
           for (const selector of selectors) {
             mainElement = document.querySelector(selector);
             if (mainElement && mainElement.innerText.trim().length > 200) {
-              console.log(`Found content with selector: ${selector}`);
               break;
             }
           }
 
           if (!mainElement) mainElement = document.body;
 
-          // Clone the element to avoid modifying the actual DOM
           const cloned = mainElement.cloneNode(true);
 
-          // Remove unwanted elements more aggressively
           cloned.querySelectorAll(
             'script, style, noscript, iframe, nav, header, footer, aside, ' +
             '.sidebar, .advertisement, .ad, .ads, .social-share, .comments, ' +
@@ -220,7 +290,6 @@ export class TechUpdatesPipeline {
             '.cookie-banner, .newsletter, #comments'
           ).forEach(el => el.remove());
 
-          // Get both HTML and text
           const html = cloned.innerHTML;
           const text = cloned.innerText || cloned.textContent || '';
 
@@ -233,11 +302,9 @@ export class TechUpdatesPipeline {
 
         console.log(`✅ Content extracted: ${extracted.length} characters`);
 
-        // Validate content
         if (!extracted.text || extracted.length < 100) {
           console.warn(`⚠️ Content too short (${extracted.length} chars) for ${result.url}`);
 
-          // Try one more time with just body text as fallback
           const fallbackText = await page.evaluate(() => document.body.innerText);
           if (fallbackText && fallbackText.length > 100) {
             extracted.text = fallbackText;
@@ -249,7 +316,6 @@ export class TechUpdatesPipeline {
           }
         }
 
-        // Convert HTML to Markdown with better error handling
         let markdown = '';
         try {
           if (extracted.html && extracted.html.trim()) {
@@ -262,19 +328,16 @@ export class TechUpdatesPipeline {
           markdown = extracted.text;
         }
 
-        // Clean up markdown
         markdown = markdown
-          .replace(/\n{3,}/g, '\n\n') // Remove excessive newlines
-          .replace(/\[object Object\]/g, '') // Remove object placeholders
+          .replace(/\n{3,}/g, '\n\n')
+          .replace(/\[object Object\]/g, '')
           .trim();
 
-        // Limit markdown length but keep it reasonable
         const maxLength = 15000;
         if (markdown.length > maxLength) {
           markdown = markdown.substring(0, maxLength) + '\n\n[Content truncated...]';
         }
 
-        // Final validation
         if (markdown.length < 100) {
           console.warn(`⚠️ Final markdown too short (${markdown.length} chars) for ${result.url}`);
           await browser.close();
@@ -308,13 +371,13 @@ export class TechUpdatesPipeline {
           return null;
         }
 
-        // Wait before retry
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
 
     return null;
   }
+
   async extractPageTitle(url) {
     let browser;
     try {
@@ -336,16 +399,12 @@ export class TechUpdatesPipeline {
         timeout: 15000
       });
 
-      // Try multiple ways to get the title
       const title = await page.evaluate(() => {
-        // Try meta og:title first
         const ogTitle = document.querySelector('meta[property="og:title"]');
         if (ogTitle?.content) return ogTitle.content;
 
-        // Try regular title tag
         if (document.title) return document.title;
 
-        // Try h1
         const h1 = document.querySelector('h1');
         if (h1?.innerText) return h1.innerText;
 
@@ -380,7 +439,6 @@ export class TechUpdatesPipeline {
 
     const blogs = [];
 
-    // Define state with proper defaults
     const StateAnnotation = Annotation.Root({
       articleContent: Annotation({
         reducer: (curr, next) => next ?? curr ?? "",
@@ -399,61 +457,101 @@ export class TechUpdatesPipeline {
     const workflow = new StateGraph(StateAnnotation)
       .addNode("generateBlogNode", async (state) => {
         console.log(`✍️ Generating detailed blog...`);
-
-        // Safely get article content
         const articleContent = state.articleContent || '';
         if (!articleContent || articleContent.length < 50) {
           console.error('❌ Article content is too short or missing');
           return { detailedBlog: 'Content not available' };
         }
 
-        // Safely substring
         const contentPreview = articleContent.length > 8000
           ? articleContent.substring(0, 8000)
           : articleContent;
 
-        const prompt = `You are an expert technical content writer. 
+        const prompt = `You are an expert technical content writer specializing in ${tech}.
 
-Create a comprehensive, well-structured blog post about ${tech} based on the following content.
+Create a comprehensive, well-structured blog post based on the source content below.
 
-Requirements:
-- Use clear headings and sections
-- Include code examples if relevant
-- Highlight key features and updates
-- Make it engaging and informative
-- Use proper markdown formatting
-- Target length: 1000-1500 words
+STRUCTURE REQUIREMENTS:
+- Start with a brief 2-3 sentence introduction explaining what this update/feature is
+- Use descriptive H2 and H3 headings (##, ###) to organize sections
+- Include these sections if applicable:
+  * What's New / Key Updates
+  * Breaking Changes (if any)
+  * Technical Details / How It Works
+  * Migration Guide (if relevant)
+  * Performance Impact (if mentioned)
+- End with a brief conclusion summarizing the impact
 
-Content:
+CONTENT REQUIREMENTS:
+- Extract and explain ONLY information present in the source content
+- Include code examples if they exist in the source (preserve syntax and formatting)
+- Use technical terminology accurately
+- Highlight version numbers, dates, and metrics when available
+- Explain WHY changes matter, not just WHAT changed
+- Target length: 2000-2500 words
+
+FORMATTING REQUIREMENTS:
+- Use proper markdown: **bold** for emphasis, \`code\` for inline code, \`\`\`language for code blocks
+- Use bullet points for lists, not numbered lists
+- Keep paragraphs 2-4 sentences max
+- Add line breaks between sections
+
+WHAT TO AVOID:
+- Don't add information not in the source content
+- Don't use phrases like "in this article" or "we will discuss"
+- Don't include generic introductions about what ${tech} is
+- Don't add placeholder comments like "// your code here"
+- Don't speculate about future updates not mentioned in source
+
+SOURCE CONTENT:
 ${contentPreview}
 
-Generate the blog post:`;
+Generate the blog post in markdown format:`;
 
         const resp = await this.model.invoke([new HumanMessage(prompt)]);
         return { detailedBlog: resp.content.trim() };
       })
       .addNode("summarizeNode", async (state) => {
         console.log(`🧾 Generating summary...`);
-
-        // Safely get detailed blog
         const detailedBlog = state.detailedBlog || '';
         if (!detailedBlog || detailedBlog.length < 50) {
           console.error('❌ Detailed blog is too short or missing');
           return { summary: 'Summary not available' };
         }
 
-        // Safely substring
         const blogPreview = detailedBlog.length > 5000
           ? detailedBlog.substring(0, 5000)
           : detailedBlog;
 
-        const prompt = `Create a concise summary of this blog post in 3-5 bullet points. 
-Focus on the most important updates and features.
+        const prompt = `Summarize the following blog post in exactly 3–5 clear bullet points.
 
-Blog content:
+WHAT TO INCLUDE:
+- New features, updates, or product announcements
+- Breaking changes or deprecations
+- Performance improvements with metrics (if mentioned)
+- API changes or new capabilities
+- Version numbers or release dates (if mentioned)
+
+WHAT NOT TO INCLUDE:
+- Generic marketing language or promotional content
+- Background information or historical context
+- Code examples or implementation details
+- Author opinions or editorial commentary
+- Tutorial steps or how-to instructions
+- Introductory or concluding remarks
+- Comparisons to other tools or frameworks
+- Future roadmap items without concrete timelines
+
+FORMATTING RULES:
+- Keep each bullet point under 20 words
+- Start with action verbs: "Introduces", "Adds", "Removes", "Deprecates", "Improves", "Updates"
+- Be specific and technical, not vague
+- Use present tense
+
+Blog Content:
 ${blogPreview}
 
-Summary:`;
+Bullet Point Summary:`;
 
         const resp = await this.model.invoke([new HumanMessage(prompt)]);
         return { summary: resp.content.trim() };
@@ -464,12 +562,10 @@ Summary:`;
 
     const app = workflow.compile();
 
-    // Process articles with better error handling
     for (const article of articles) {
       try {
         console.log(`🚀 Processing: ${article.title}`);
 
-        // Validate article has content
         if (!article.markdown || article.markdown.length < 100) {
           console.warn(`⚠️ Skipping ${article.title} - insufficient content`);
           continue;
@@ -481,7 +577,6 @@ Summary:`;
           articleContent: article.markdown
         });
 
-        // Validate result
         if (!result.detailedBlog || result.detailedBlog.length < 100) {
           console.warn(`⚠️ Generated blog too short for ${article.title}`);
           continue;
@@ -495,7 +590,6 @@ Summary:`;
         console.log(`   ✅ Blog generated: ${result.detailedBlog.length} chars`);
         console.log(`   ✅ Summary generated: ${result.summary.length} chars`);
 
-        // Generate a better title if needed
         const title = article.title.length > 100
           ? article.title.substring(0, 97) + '...'
           : article.title;
@@ -515,6 +609,9 @@ Summary:`;
           published: false,
           published_at: article.published_at,
           readingTimeMinutes: this.calculateReadingTime(result.detailedBlog),
+          contentHash: article.contentHash,
+          isUpdate: article.isUpdate || false,
+          existingBlog: article.existingBlog || null,
         };
 
         this.memory.push({
@@ -529,11 +626,6 @@ Summary:`;
       } catch (err) {
         console.error(`❌ LangGraph failed for ${article.originalUrl}`);
         console.error(`   Error: ${err.message}`);
-        console.error(`   Article title: ${article.title}`);
-        console.error(`   Content length: ${article.markdown?.length || 0} chars`);
-        if (err.stack) {
-          console.error(`   Stack trace: ${err.stack.split('\n').slice(0, 3).join('\n')}`);
-        }
       }
     }
 
@@ -542,7 +634,6 @@ Summary:`;
   }
 
   extractHighlights(summary) {
-    // Extract key points from summary
     const highlights = [];
     const lines = summary.split('\n').filter(line => line.trim());
 
@@ -561,7 +652,6 @@ Summary:`;
   generateTags(tech, content) {
     const tags = new Set([tech.toLowerCase(), "technology", "updates"]);
 
-    // Extract potential tags from content
     const keywords = ['release', 'feature', 'update', 'version', 'api', 'framework'];
     const lowerContent = content.toLowerCase();
 
@@ -589,36 +679,45 @@ Summary:`;
     }
 
     const saved = [];
+    const updated = [];
     const errors = [];
 
     for (const blog of blogs) {
       try {
-        const savedBlog = await this.saveSingleBlog(blog);
-        saved.push(savedBlog);
-        console.log(`✅ Saved: ${blog.title}`);
+        // Check if this is an update (blog has isUpdate flag and existingBlog reference)
+        if (blog.isUpdate === true && blog.existingBlog) {
+          console.log(`🔄 Updating existing blog: ${blog.title}`);
+          const updatedBlog = await this.updateExistingBlog(blog.existingBlog, blog);
+          updated.push(updatedBlog);
+          console.log(`✅ Updated: ${blog.title}`);
+        } else {
+          console.log(`💾 Saving new blog: ${blog.title}`);
+          const savedBlog = await this.saveSingleBlog(blog);
+          saved.push(savedBlog);
+          console.log(`✅ Saved: ${blog.title}`);
+        }
       } catch (err) {
-        console.error(`❌ Failed to save ${blog.title}: ${err.message}`);
+        console.error(`❌ Failed to save/update ${blog.title}: ${err.message}`);
         errors.push({ title: blog.title, error: err.message });
       }
     }
 
-    console.log(`💾 Saved ${saved.length}/${blogs.length} blogs`);
+    console.log(`\n💾 Database Summary:`);
+    console.log(`   🆕 New blogs saved: ${saved.length}`);
+    console.log(`   🔄 Existing blogs updated: ${updated.length}`);
     if (errors.length > 0) {
-      console.warn(`⚠️ Failed to save ${errors.length} blogs`);
+      console.warn(`   ❌ Failed: ${errors.length}`);
     }
 
-    return saved;
+    return [...saved, ...updated];
   }
 
   async saveSingleBlog(blogData) {
-    // Ensure slug is unique
     const slug = await Blog.handleSlugCollision(blogData.slug);
     blogData.slug = slug;
 
-    // Recalculate reading time
     blogData.readingTimeMinutes = this.calculateReadingTime(blogData.markdown);
 
-    // Validate required fields
     if (!blogData.title || !blogData.markdown) {
       throw new Error('Missing required fields: title or markdown');
     }
@@ -641,15 +740,11 @@ Summary:`;
     try {
       let extracted = [];
 
-      // Determine if input is URL or tech keyword
-      // Determine if input is URL or tech keyword
       if (techOrText.startsWith("http") || techOrText.includes(".")) {
         console.log(`🌎 Mode: Direct URL extraction`);
 
-        // Extract the actual page title
         const pageTitle = await this.extractPageTitle(techOrText);
 
-        // Fallback to domain name if title extraction fails
         const fallbackTitle = `Article from ${new URL(techOrText).hostname} - ${Date.now()}`;
 
         const searchResults = [{

@@ -23,7 +23,12 @@ const blogSchema = new mongoose.Schema({
   error: { type: String, default: "" },
   readingTimeMinutes: { type: Number, required: true },
   published: { type: Boolean, default: false },
-  published_at: { type: Date, default: null }
+  published_at: { type: Date, default: null },
+  contentHash: {
+    type: String,
+    index: true,
+    required: false
+  }
 }, {
   timestamps: true
 });

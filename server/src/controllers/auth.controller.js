@@ -103,7 +103,7 @@ const loginUser = async (req, reply) => {
         };
 
         // Set cookie using Fastify's setCookie
-        reply.setCookie('refreshToken', refreshToken, {
+        reply.setCookie('accessToken', accessToken, {
             path: '/',
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
