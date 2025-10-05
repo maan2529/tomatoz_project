@@ -315,6 +315,60 @@ export class TechUpdatesPipeline {
 
     return null;
   }
+  async extractPageTitle(url) {
+    let browser;
+    try {
+      console.log(`📄 Extracting title from ${url}...`);
+
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      });
+
+      const page = await context.newPage();
+
+      await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: 15000
+      });
+
+      // Try multiple ways to get the title
+      const title = await page.evaluate(() => {
+        // Try meta og:title first
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        if (ogTitle?.content) return ogTitle.content;
+
+        // Try regular title tag
+        if (document.title) return document.title;
+
+        // Try h1
+        const h1 = document.querySelector('h1');
+        if (h1?.innerText) return h1.innerText;
+
+        return null;
+      });
+
+      await browser.close();
+
+      if (title && title.trim()) {
+        console.log(`✅ Extracted title: ${title}`);
+        return title.trim();
+      }
+
+      return null;
+
+    } catch (err) {
+      console.error(`❌ Failed to extract title: ${err.message}`);
+      if (browser) {
+        await browser.close().catch(() => { });
+      }
+      return null;
+    }
+  }
 
   async summarizeWithLangGraph(tech, articles) {
     console.log(`\n🧠 Starting LangGraph summarization for ${articles.length} articles...`);
@@ -588,13 +642,23 @@ Summary:`;
       let extracted = [];
 
       // Determine if input is URL or tech keyword
+      // Determine if input is URL or tech keyword
       if (techOrText.startsWith("http") || techOrText.includes(".")) {
         console.log(`🌎 Mode: Direct URL extraction`);
+
+        // Extract the actual page title
+        const pageTitle = await this.extractPageTitle(techOrText);
+
+        // Fallback to domain name if title extraction fails
+        const fallbackTitle = `Article from ${new URL(techOrText).hostname} - ${Date.now()}`;
+
         const searchResults = [{
-          title: "Manual Source",
+          title: pageTitle || fallbackTitle,
           url: techOrText,
           published_at: new Date().toISOString()
         }];
+
+        console.log(`📌 Using title: "${searchResults[0].title}"`);
         extracted = await this.extractContent(searchResults);
       } else {
         console.log(`🔍 Mode: Tech keyword search`);
