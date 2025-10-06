@@ -1,11 +1,12 @@
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import AppRouter from './router/AppRouter.tsx'
+import GlobalLoader from './component/GlobalLoader.tsx'
 
-import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
-import store from "./store/store/store.js";
-import { Provider } from 'react-redux'
-createRoot(document.getElementById("root")!).render(
-  <Provider store={store}>
-    <App />
-  </Provider>,
-);
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <GlobalLoader />
+    <AppRouter />
+  </StrictMode>,
+)
