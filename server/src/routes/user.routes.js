@@ -3,7 +3,5 @@ import userController from "../controllers/user.controller.js";
 
 export default async function userRoutes(fastify) {
     fastify.addHook("preHandler", authMiddleware);
-
     fastify.get("/", userController.getAllUsers);
-
 }
