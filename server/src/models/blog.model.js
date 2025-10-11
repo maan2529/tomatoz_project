@@ -14,21 +14,35 @@ const blogSchema = new mongoose.Schema({
   language: { type: String, default: "en" },
   audioIds: [{ type: mongoose.Schema.Types.ObjectId, default: [] }],
   imageIds: [{ type: mongoose.Schema.Types.ObjectId, default: [] }],
-  diagramIds: [{ type: mongoose.Schema.Types.ObjectId, default: [] }],
+
+  // 🆕 Diagram support - Changed from 'diagrams' to 'diagramIds'
+  diagramIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Diagram'
+  }],
+
+  diagramStatus: {
+    type: String,
+    enum: ["pending", "processing", "completed", "failed", "skipped"],
+    default: "pending"
+  },
+
+  diagramError: {
+    type: String,
+    default: null
+  },
+
   processingStatus: {
     type: String,
     enum: ["processing", "ready", "failed"],
     default: "processing"
   },
+
   error: { type: String, default: "" },
   readingTimeMinutes: { type: Number, required: true },
   published: { type: Boolean, default: false },
   published_at: { type: Date, default: null },
-  contentHash: {
-    type: String,
-    index: true,
-    required: false
-  }
+  contentHash: { type: String, default: null }
 }, {
   timestamps: true
 });

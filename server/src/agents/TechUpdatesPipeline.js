@@ -15,7 +15,7 @@ export class TechUpdatesPipeline {
     this.config = { ...pipelineConfig, ...config };
     this.tavily = tavily({ apiKey: config.tavilyApiKey || env.TAVILY_API_KEY });
     this.model = new ChatGoogleGenerativeAI({
-      model: apiConfig.gemini.model || "gemini-1.5-flash",
+      model: apiConfig.gemini.model || "gemini-2.0-flash",
       apiKey: config.geminiApiKey || env.GEMINI_API_KEY,
       temperature: 0.3,
     });
