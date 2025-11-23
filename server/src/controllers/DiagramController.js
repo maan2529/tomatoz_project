@@ -1,6 +1,6 @@
 // controllers/DiagramController.js
 
-import { DiagramGeneratorAgent } from '../agents/DiagramGeneratorAgent.js';
+import DiagramGeneratorAgent from '../agents/DiagramGeneratorAgent.js';
 import { Blog } from '../models/blog.model.js';
 import Diagram from '../models/diagram.model.js';
 import mongoose from 'mongoose';

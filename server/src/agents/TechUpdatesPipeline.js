@@ -28,6 +28,7 @@ export class TechUpdatesPipeline {
     this.turndownService.remove(['script', 'style', 'noscript', 'iframe']);
   }
 
+  // give ever blog unique hash based on content
   generateContentHash(content) {
     return crypto
       .createHash('sha256')
@@ -728,6 +729,7 @@ Bullet Point Summary:`;
     return await blog.save();
   }
 
+  // check if techOrText is a URL or a tech keyword
   async execute(techOrText) {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`🚀 TechUpdatesPipeline Started`);

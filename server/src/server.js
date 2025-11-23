@@ -3,7 +3,9 @@ import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import app from "./app/index.js";
 
-const fastify = Fastify();
+const fastify = Fastify({
+  logger: true
+});
 
 fastify.register(cookie, {
   secret: "nice_pic",
