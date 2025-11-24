@@ -1,0 +1,236 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@900&display=swap');
+@import url("https://fonts.cdnfonts.com/css/thegoodmonolith");
+
+.loader {
+  position: fixed;
+  inset: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background: #05070c;
+  color: #ffffff;
+  font-family: "Poppins", "Segoe UI", sans-serif;
+  overflow: hidden;
+  z-index: 10000000;
+}
+
+.loader-progress {
+  position: absolute;
+  top: clamp(16px, 3vw, 32px);
+  z-index: 10000;
+  font-family: "Orbitron", "Courier New", monospace;
+  font-size: clamp(28px, 5vw, 48px);
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 0.1em;
+}
+
+.loader-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  background: #000000;
+  overflow: hidden;
+}
+
+.loader-left {
+  position: relative;
+  flex: 0 0 26%;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 22px;
+  padding: clamp(32px, 5vw, 64px) clamp(28px, 4vw, 56px);
+  background: black;
+  z-index: 2;
+}
+
+.loader-left-title div {
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.loader-left-subtitle {
+  max-width: 95%;
+  font-size: clamp(16px, 1.5vw, 16px);
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.65);
+  letter-spacing: 0.01em;
+}
+
+.loader-left-line {
+  display: inline-block;
+  width: clamp(100px, 15vw, 140px);
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #68d5ff 0%, #ff6bd7 50%, #ff9f5a 100%);
+  box-shadow: 0 0 14px rgba(255, 108, 215, 0.7);
+}
+
+.loader-right {
+  flex: 1;
+  position: relative;
+  background: black;
+  overflow: hidden;
+}
+
+.loader-cards {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.loader-card {
+  position: relative;
+  min-width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(24px, 4vw, 48px);
+  cursor: pointer;
+  overflow: hidden;
+  filter: brightness(1) contrast(1);
+}
+
+.loader-card-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(9, 14, 24, 0.15) 0%, rgba(7, 9, 16, 0.9) 80%);
+  z-index: -1;
+}
+
+.loader-card-content {
+  position: relative;
+  z-index: 1;
+  max-width: 700px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: left;
+  text-align: left;
+  gap: clamp(12px, 2vw, 20px);
+}
+
+.loader-card-hashtag {
+  font-size: clamp(14px, 1.5vw, 18px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0;
+  font-family: 'TheGoodMonolith', 'Segoe UI', sans-serif;
+}
+
+.loader-card-number {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: clamp(8px, 2vw, 16px);
+  filter: drop-shadow(0 0 32px rgba(104, 213, 255, 0.35));
+}
+
+.loader-card-number-svg {
+  width: clamp(120px, 18vw, 220px);
+  height: auto;
+  display: block;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.loader-card-title {
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: clamp(8px, 1.5vw, 12px);
+}
+
+.loader-card-summary {
+  font-size: clamp(14px, 1.5vw, 16px);
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: clamp(8px, 1.5vw, 12px);
+}
+
+.loader-card-details {
+  font-size: clamp(12px, 1.3vw, 14px);
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.loader-indicators {
+  position: absolute;
+  bottom: clamp(20px, 3vw, 32px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: clamp(8px, 1.5vw, 12px);
+  z-index: 10;
+}
+
+.loader-indicator {
+  width: clamp(8px, 1.5vw, 12px);
+  height: clamp(8px, 1.5vw, 12px);
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.loader-indicator.active {
+  background: linear-gradient(90deg, #68d5ff 0%, #ff6bd7 100%);
+  box-shadow: 0 0 12px rgba(104, 213, 255, 0.6);
+}
+
+@media (max-width: 1024px) {
+  .loader-left {
+    flex: 0 0 30%;
+    min-width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .loader-container {
+    flex-direction: column;
+  }
+
+  .loader-left {
+    flex: none;
+    min-width: 100%;
+    height: 50%;
+    padding: clamp(24px, 4vw, 32px) clamp(20px, 4vw, 28px);
+    order: 2;
+  }
+
+  .loader-progress {
+    right: clamp(16px, 3vw, 32px);
+  }
+
+  .loader-right {
+    order: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .loader-left-title div {
+    font-size: 65px !important;
+  }
+}

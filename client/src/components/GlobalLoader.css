@@ -1,0 +1,34 @@
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@900&display=swap");
+
+.global-loader-overlay {
+  overflow-x: hidden;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: black;
+  z-index: 100000;
+}
+
+.global-loader-text {
+  font-family: "Orbitron", "Courier New", monospace;
+  font-size: clamp(48px, 8vw, 96px);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.global-loader-progress {
+  position: absolute;
+  bottom: clamp(16px, 4vw, 32px);
+  right: clamp(16px, 5vw, 48px);
+  font-family: "Orbitron", "Courier New", monospace;
+  font-size: clamp(16px, 2.6vw, 28px);
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.82);
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
